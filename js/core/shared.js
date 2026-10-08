@@ -98,14 +98,38 @@
     return DEFAULT_DEVICE_DOMAIN;
   }
 
+  // When this page is served by the box itself over plain http (the on-box
+  // copy on a side port), talk to the box at the same hostname over plain
+  // http/ws on port 80. No certificate is involved anywhere on that path.
+  function servedFromBoxOverHttp() {
+    try {
+      const loc = global.location;
+      if (!loc || loc.protocol !== "http:") {
+        return false;
+      }
+      const host = String(loc.hostname || "");
+      if (host === "" || host === "localhost" || host === "127.0.0.1") {
+        return false;
+      }
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   TAHtml.createFlavor = function createFlavor() {
-    const domain = resolveDeviceDomain();
-    const secure = domain === DEFAULT_DEVICE_DOMAIN;
+    let domain = resolveDeviceDomain();
+    let secure = domain === DEFAULT_DEVICE_DOMAIN;
+    if (secure && servedFromBoxOverHttp()) {
+      domain = global.location.hostname;
+      secure = false;
+    }
     const http = secure ? "https" : "http";
     const ws = secure ? "wss" : "ws";
     return {
       domain,
       isDeviceOverridden: domain !== DEFAULT_DEVICE_DOMAIN,
+      isSecure: secure,
       apiBaseUrl: http + "://" + domain + "/api",
       audioWebSocket: ws + "://" + domain + "/sockets/audio",
       displayWebSocket: ws + "://" + domain + "/sockets/display",
