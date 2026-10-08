@@ -24,6 +24,18 @@
       { value: 3, label: "544p" },
       { value: 4, label: "480p" },
     ],
+    // Android "Display size" expressed as a percentage of the density the
+    // resolution preset would normally use. Lower = smaller UI elements.
+    DISPLAY_UI_SCALES: [
+      { value: 100, label: "100% (Android default)" },
+      { value: 85, label: "85% (Android minimum)" },
+      { value: 75, label: "75%" },
+      { value: 65, label: "65%" },
+    ],
+    // Applied automatically whenever the box still holds the stock density
+    // for its preset and the user has never picked a UI scale explicitly.
+    DEFAULT_UI_SCALE: 85,
+    UI_SCALE_USER_SET_KEY: "ta.uiScale.userSet",
     DISPLAY_QUALITY_PRESETS: [
       { value: 40, label: "40" },
       { value: 50, label: "50" },
@@ -51,14 +63,50 @@
     // console.log("[tesla-android-web]", message);
   };
 
+  // Device endpoint resolution.
+  // Default is the production hostname served by the box over TLS. For
+  // development the device can be overridden with ?device=<host> (remembered
+  // in localStorage) so the page can be served from any machine and still
+  // talk to a Tesla Android box. An IP or non-production host is reached
+  // over plain http/ws because the box's certificate only covers the
+  // production hostname.
+  const DEFAULT_DEVICE_DOMAIN = "device.teslaandroid.com";
+  const DEVICE_OVERRIDE_KEY = "ta.device.override";
+
+  function resolveDeviceDomain() {
+    try {
+      const params = new URLSearchParams(global.location.search || "");
+      if (params.has("device")) {
+        const requested = String(params.get("device") || "").trim();
+        if (requested.length === 0 || requested === "default") {
+          global.localStorage.removeItem(DEVICE_OVERRIDE_KEY);
+        } else {
+          global.localStorage.setItem(DEVICE_OVERRIDE_KEY, requested);
+        }
+      }
+      const stored = global.localStorage.getItem(DEVICE_OVERRIDE_KEY);
+      if (stored && stored.length > 0) {
+        return stored;
+      }
+    } catch (_error) {
+      // localStorage may be unavailable; fall through to default
+    }
+    return DEFAULT_DEVICE_DOMAIN;
+  }
+
   TAHtml.createFlavor = function createFlavor() {
+    const domain = resolveDeviceDomain();
+    const secure = domain === DEFAULT_DEVICE_DOMAIN;
+    const http = secure ? "https" : "http";
+    const ws = secure ? "wss" : "ws";
     return {
-      domain: "device.teslaandroid.com",
-      apiBaseUrl: "https://device.teslaandroid.com/api",
-      audioWebSocket: "wss://device.teslaandroid.com/sockets/audio",
-      displayWebSocket: "wss://device.teslaandroid.com/sockets/display",
-      gpsWebSocket: "wss://device.teslaandroid.com/sockets/gps",
-      touchscreenWebSocket: "wss://device.teslaandroid.com/sockets/touchscreen",
+      domain,
+      isDeviceOverridden: domain !== DEFAULT_DEVICE_DOMAIN,
+      apiBaseUrl: http + "://" + domain + "/api",
+      audioWebSocket: ws + "://" + domain + "/sockets/audio",
+      displayWebSocket: ws + "://" + domain + "/sockets/display",
+      gpsWebSocket: ws + "://" + domain + "/sockets/gps",
+      touchscreenWebSocket: ws + "://" + domain + "/sockets/touchscreen",
     };
   };
 
@@ -75,6 +123,10 @@
     createElement,
     mapSoftApBandFromConfig,
     densityForResolutionPreset,
+    densityForUiScale,
+    uiScaleForDensity,
+    effectiveDensity,
+    markUiScaleUserSet,
     rendererName,
     resolutionPresetName,
     qualityPresetName,
@@ -227,6 +279,65 @@
 
   function rendererName(renderer) {
     return _lookupLabel(TAHtml.constants.DISPLAY_RENDERERS, renderer, "Motion JPEG");
+  }
+
+  // Density to send to the box for a given preset and UI scale percentage.
+  function densityForUiScale(preset, isH264, scalePercent) {
+    const base = densityForResolutionPreset(preset, isH264);
+    const scale = clamp(toInt(scalePercent, 100), 50, 100);
+    return Math.max(80, Math.round((base * scale) / 100));
+  }
+
+  // The density the fork wants on the box: honours whatever is stored unless
+  // it is still the stock value for the preset and the user never chose a
+  // scale, in which case the fork default (smallest Android size) applies.
+  function effectiveDensity(preset, isH264, storedDensity) {
+    const base = densityForResolutionPreset(preset, isH264);
+    const stored = toInt(storedDensity, 0);
+    let userSet = false;
+    try {
+      userSet = global.localStorage.getItem(TAHtml.constants.UI_SCALE_USER_SET_KEY) === "1";
+    } catch (_error) {
+      userSet = false;
+    }
+    if (stored === base && !userSet) {
+      return densityForUiScale(preset, isH264, TAHtml.constants.DEFAULT_UI_SCALE);
+    }
+    if (stored >= 80 && stored <= 400) {
+      return stored;
+    }
+    return densityForUiScale(preset, isH264, TAHtml.constants.DEFAULT_UI_SCALE);
+  }
+
+  function markUiScaleUserSet() {
+    try {
+      global.localStorage.setItem(TAHtml.constants.UI_SCALE_USER_SET_KEY, "1");
+    } catch (_error) {
+      // no-op
+    }
+  }
+
+  // Reverse of densityForUiScale: which UI scale option best explains the
+  // density currently stored on the box. Snaps to the nearest option so a
+  // density written by an older frontend still maps to "Default".
+  function uiScaleForDensity(preset, isH264, density) {
+    const base = densityForResolutionPreset(preset, isH264);
+    const actual = toInt(density, base);
+    if (!base || !actual) {
+      return 100;
+    }
+    const percent = (actual / base) * 100;
+    const options = TAHtml.constants.DISPLAY_UI_SCALES;
+    let best = options[0].value;
+    let bestDistance = Infinity;
+    for (let index = 0; index < options.length; index += 1) {
+      const distance = Math.abs(options[index].value - percent);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = options[index].value;
+      }
+    }
+    return best;
   }
 
   function resolutionPresetName(preset) {

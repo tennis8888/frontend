@@ -263,5 +263,10 @@
     shellController.initialize();
 
     await homeController.initialize(systemConfiguration || {});
+
+    // Start browser audio without requiring a press on the audio button.
+    // Falls back to the first touch anywhere on the page if the browser's
+    // autoplay policy blocks the immediate attempt.
+    audioController.autoStart();
   }
 })(window);

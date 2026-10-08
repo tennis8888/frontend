@@ -104,9 +104,10 @@
         trailing: this._createSelect(constants.DISPLAY_RENDERERS, config.renderer, async (value) => {
           const renderer = utils.toInt(value, config.renderer);
           await this._updateDisplayConfig((draft) => {
+            const uiScale = utils.uiScaleForDensity(draft.resolutionPreset, draft.isH264 === 1, draft.density);
             draft.renderer = renderer;
             draft.isH264 = renderer !== 0 ? 1 : 0;
-            draft.density = utils.densityForResolutionPreset(draft.resolutionPreset, draft.isH264 === 1);
+            draft.density = utils.densityForUiScale(draft.resolutionPreset, draft.isH264 === 1, uiScale);
           });
         }),
       });
@@ -121,13 +122,34 @@
         trailing: this._createSelect(constants.DISPLAY_RESOLUTION_PRESETS, config.resolutionPreset, async (value) => {
           const preset = utils.toInt(value, config.resolutionPreset);
           await this._updateDisplayConfig((draft) => {
+            const uiScale = utils.uiScaleForDensity(draft.resolutionPreset, draft.isH264 === 1, draft.density);
             draft.resolutionPreset = preset;
-            draft.density = utils.densityForResolutionPreset(draft.resolutionPreset, draft.isH264 === 1);
+            draft.density = utils.densityForUiScale(draft.resolutionPreset, draft.isH264 === 1, uiScale);
           });
         }),
       });
       this._appendDescription(
         "Choosing a low resolution improves the display performance in Drive. It reduces the browser load, meant for cars equipped with MCU2. Resolutions lower than 720p only work with the MJPEG renderer.",
+      );
+      this._appendDivider();
+
+      this._appendTile({
+        icon: "format_size",
+        title: "UI scale",
+        trailing: this._createSelect(
+          constants.DISPLAY_UI_SCALES,
+          utils.uiScaleForDensity(config.resolutionPreset, config.isH264 === 1, config.density),
+          async (value) => {
+            const uiScale = utils.toInt(value, constants.DEFAULT_UI_SCALE);
+            utils.markUiScaleUserSet();
+            await this._updateDisplayConfig((draft) => {
+              draft.density = utils.densityForUiScale(draft.resolutionPreset, draft.isH264 === 1, uiScale);
+            });
+          },
+        ),
+      });
+      this._appendDescription(
+        "Same as the Display size slider in Android settings, but stored on the device so it survives reboots. 85% matches the smallest size the Android slider allows; lower values go beyond it.",
       );
       this._appendDivider();
 

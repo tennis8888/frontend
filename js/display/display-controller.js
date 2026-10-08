@@ -177,6 +177,7 @@
         viewSize,
         adjustedSize: desiredSize,
         resolutionPreset: remoteDisplayState.resolutionPreset,
+        density: remoteDisplayState.density,
         renderer: remoteDisplayState.renderer,
         isResponsive: remoteDisplayState.isResponsive === 1,
         quality: remoteDisplayState.quality,
@@ -200,7 +201,9 @@
       this.resize.timerId = null;
 
       const isH264 = cooldown.renderer !== 0;
-      const density = this._densityForResolutionPreset(cooldown.resolutionPreset, isH264);
+      // Keep the density stored on the box (it may carry a user-chosen UI
+      // scale); a stock value is replaced by the fork default on first load.
+      const density = utils.effectiveDensity(cooldown.resolutionPreset, isH264, cooldown.density);
 
       const payload = {
         width: cooldown.adjustedSize.width,
