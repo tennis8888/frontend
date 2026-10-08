@@ -4,7 +4,11 @@
   const TAHtml = (global.TAHtml = global.TAHtml || {});
 
   TAHtml.constants = {
-    APP_VERSION: "2026.3.1",
+    // Must match the Tesla Android release installed on the box
+    // (ro.tesla-android.build.version). The update button compares this
+    // against the newest GitHub release, so a stale value nags forever.
+    APP_VERSION: "2026.22.1",
+    UPDATE_SEEN_KEY: "ta.update.seenVersion",
     DISPLAY_PREF_KEYS: [
       "DisplayRepository_isPrimaryDisplaySharedPreferencesKey",
       "flutter.DisplayRepository_isPrimaryDisplaySharedPreferencesKey",

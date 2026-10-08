@@ -65,9 +65,13 @@
       try {
         const latestRelease = await this.apiClient.fetchLatestRelease();
         this.latestVersion = this._extractReleaseVersion(latestRelease);
-        this.isUpdateAvailable =
+        const newerThanInstalled =
           this.latestVersion !== null &&
           TAHtml.utils.compareVersions(constants.APP_VERSION, this.latestVersion) === 1;
+        // Once the user has opened the updater for a given version, stop
+        // showing the badge for that version. The updater itself lives in
+        // Android settings if they want it again.
+        this.isUpdateAvailable = newerThanInstalled && !this._wasUpdateSeen(this.latestVersion);
       } catch (error) {
         TAHtml.log("Unable to check updates: " + String(error));
         this.isUpdateAvailable = false;
@@ -88,6 +92,9 @@
         }
         try {
           await this.apiClient.openUpdater();
+          this._markUpdateSeen(this.latestVersion);
+          this.isUpdateAvailable = false;
+          this._refreshUpdateButton();
         } catch (error) {
           TAHtml.log("Unable to launch updater: " + String(error));
         }
@@ -117,6 +124,24 @@
       const isPlaying = this.audioController.getAudioState() === "playing";
       this._setButtonIcon(this.audioButton, isPlaying ? "volume_up" : "volume_off");
       this.audioButton.title = isPlaying ? "Disable browser audio" : "Enable browser audio";
+    }
+
+    _wasUpdateSeen(version) {
+      try {
+        return version !== null && global.localStorage.getItem(constants.UPDATE_SEEN_KEY) === String(version);
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    _markUpdateSeen(version) {
+      try {
+        if (version !== null) {
+          global.localStorage.setItem(constants.UPDATE_SEEN_KEY, String(version));
+        }
+      } catch (_error) {
+        // no-op
+      }
     }
 
     _refreshUpdateButton() {
